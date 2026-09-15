@@ -21,15 +21,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install terminal test dependency
-        run: python -m pip install pywinpty==2.0.15
+        run: python -m pip install pywinpty==2.0.15 pyte==0.8.2 pillow==11.3.0
       - name: Test application grouping and simulation
         run: cargo test --locked --all-targets
       - name: Build Windows release and controlled workload
         run: cargo build --locked --release --bin metropolis --example load_fixture
       - name: Verify live Windows processes and disk attribution
         run: python scripts/test_live_apps.py target/release/metropolis.exe target/release/examples/load_fixture.exe
-      - name: Launch, animate, and quit in a Windows pseudoterminal
-        run: python scripts/smoke_terminal.py target/release/metropolis.exe --apps
+      - name: Check installed Chrome when available
+        run: python scripts/test_installed_chrome.py target/release/metropolis.exe
       - name: Verify classic mode still starts
         run: python scripts/smoke_terminal.py target/release/metropolis.exe
       - name: Assemble portable Windows folder

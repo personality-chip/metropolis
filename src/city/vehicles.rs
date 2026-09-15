@@ -120,3 +120,31 @@ pub fn update_vehicles(
     let speed_mod = (0.5 + (cpu / 80.0)) * config.vehicle_speed_multiplier;
     vehicles.retain_mut(|v| { v.x += v.speed * speed_mod; v.x < (area.width as f32 + 40.0) });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{applications::AppMetrics, city::applications::AppDistrict, config::SimulationConfig, theme::Theme};
+    use rand::{SeedableRng, rngs::StdRng};
+    #[test]
+    fn only_the_writing_building_sends_trucks_and_exit_clears_them() {
+        let app = |id: &str, write: f64| AppMetrics { id: id.into(), name: id.into(),
+            cpu_percent: 0.0, ram_bytes: 128 * 1_048_576, io_read_bps: 0.0, io_write_bps: 0.0,
+            disk_read_bps: Some(0.0), disk_write_bps: Some(write), processes: vec![] };
+        let mut d = AppDistrict::default();
+        let area = ratatui::layout::Rect::new(0,0,120,40);
+        d.sync(vec![app("app:chrome", 0.0), app("app:steam", 100_000_000.0)], String::new());
+        for _ in 0..20 { d.animate(); }
+        let buildings = d.geometry(area);
+        let mut vehicles = Vec::new();
+        let mut rng = StdRng::seed_from_u64(42);
+        let theme = Theme::from_str("default");
+        let config = SimulationConfig::default();
+        for _ in 0..20 { update_app_vehicles(&mut vehicles, &mut d, &buildings, area, &theme, &config, &mut rng); }
+        assert!(!vehicles.is_empty());
+        assert!(vehicles.iter().all(|v| v.owner == Some(1) && v.speed > 0.0));
+        d.sync(vec![app("app:chrome", 0.0)], String::new());
+        update_app_vehicles(&mut vehicles, &mut d, &buildings, area, &theme, &config, &mut rng);
+        assert!(vehicles.is_empty());
+    }
+}

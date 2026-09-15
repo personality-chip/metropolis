@@ -18,6 +18,7 @@ processes = []
 controls = []
 expected = {}
 capture = None
+ui = None
 capture_file = (out / 'live-snapshots.toml.txt').open('w', encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='kernel-city-') as directory:
     root = Path(directory)
@@ -41,9 +42,11 @@ with tempfile.TemporaryDirectory(prefix='kernel-city-') as directory:
         time.sleep(3)
         for control in controls:
             control.write_text('active')
+        ui = subprocess.Popen([sys.executable, 'scripts/smoke_terminal.py', exe, '--apps'])
         time.sleep(5)
         controls[0].write_text('stop')
         processes[0].wait(timeout=8)
+        assert ui.wait(timeout=20) == 0, 'Windows app interaction smoke failed'
         _, stderr = capture.communicate(timeout=30)
         capture_file.close()
         stdout = (out / 'live-snapshots.toml.txt').read_text(encoding='utf-8')
@@ -88,3 +91,7 @@ with tempfile.TemporaryDirectory(prefix='kernel-city-') as directory:
             capture.wait(timeout=5)
 
         capture_file.close()
+
+        if ui is not None and ui.poll() is None:
+            ui.kill()
+            ui.wait(timeout=5)

@@ -34,6 +34,10 @@ reader.start()
 try:
     time.sleep(3)
     assert proc.isalive(), "TUI exited before the first metric samples"
+    # Preserve a frame from the actual terminal stream, before interaction tests.
+    if '--apps' in sys.argv:
+        from render_terminal import render_svg
+        render_svg(''.join(chunks), out / 'city-live-terminal.svg', 160, 40)
     # Exercise the existing simulation and input loop, then request normal exit.
     for key in ("r", "s", "d", "d", "\t", "\x1b[C", "\x1b[6~", "\x1b[5~", "\x1b"):
         proc.write(key)
