@@ -6,6 +6,9 @@ pub struct Args {
     pub weather: Option<String>,
     pub debug: bool,
     pub distro: Option<String>,
+    pub apps: bool,
+    pub snapshot: bool,
+    pub samples: Option<usize>,
 }
 
 pub fn parse() -> Result<Args, lexopt::Error> {
@@ -14,6 +17,14 @@ pub fn parse() -> Result<Args, lexopt::Error> {
 
     while let Some(arg) = parser.next()? {
         match arg {
+            Arg::Long("apps") => args.apps = true,
+            Arg::Long("snapshot") => args.snapshot = true,
+            Arg::Long("samples") => {
+                let value = parser.value()?.into_string()?;
+                let n = value.parse::<usize>().map_err(|_| lexopt::Error::from("--samples expects an integer"))?;
+                if !(1..=3600).contains(&n) { return Err("--samples must be between 1 and 3600".into()); }
+                args.samples = Some(n);
+            }
             Arg::Short('t') | Arg::Long("theme") => {
                 args.theme = Some(parser.value()?.into_string()?);
             }
@@ -56,6 +67,9 @@ fn print_help() {
     println!("USAGE:");
     println!("  metropolis [OPTIONS]\n");
     println!("OPTIONS:");
+    println!("  --apps               Kernel City: one building per application");
+    println!("  --snapshot           Print real application metrics as TOML; no terminal UI");
+    println!("  --samples <N>        Snapshot count (1..3600, default 1), one per second");
     println!("  -t, --theme <NAME>    Override the global theme (e.g., dracula, cyberpunk)");
     println!("  -w, --weather <MODE>  Override the weather (rain, snow, clear)");
     println!("  --distro <NAME>       Override the detected distribution logo");

@@ -37,6 +37,9 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 directories = "5.0"
 
+[target.'cfg(windows)'.dependencies]
+ferrisetw = "1.2"
+
 [profile.release]
 opt-level = "z"
 lto = true

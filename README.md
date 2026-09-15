@@ -1,3 +1,8 @@
+# Kernel City fork
+
+Windows application buildings are available with `metropolis --apps`.
+See [Kernel City: download, controls, metrics and validation](docs/KERNEL_CITY.md).
+
 <div align="center">
 
 # 🌃 Metropolis
