@@ -394,7 +394,7 @@ impl MetropolisCity {
                                     let fraction = app.map(|b| b.light_fraction()).unwrap_or(0.25);
                                     let lit = wr.gen_bool(fraction);
                                     let hot = app.is_some_and(|b| b.cpu > 70.0);
-                                    let pulse = app.is_some_and(|b| b.cpu > 5.0) && (self.frame_count / 3 + seed) % 11 == 0;
+                                    let pulse = app.is_some_and(|b| b.cpu > 5.0) && (self.frame_count / 3).wrapping_add(seed) % 11 == 0;
                                     fg = if lit { if hot { self.theme.police_red } else if pulse { Color::White } else { self.theme.window_lit } } else { self.theme.window_unlit };
                                     bg = self.theme.window_dark;
                                 }

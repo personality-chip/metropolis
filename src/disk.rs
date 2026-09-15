@@ -90,7 +90,7 @@ mod windows_disk {
                 SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos());
             let props = TraceProperties { buffer_size: 64, min_buffer: 4, max_buffer: 64, ..TraceProperties::default() };
             let mut collector = Self { state: Arc::clone(&state), trace: None, worker: None };
-            match KernelTrace::new().named(name).set_trace_properties(props).enable(threads).enable(disk).stop_if_exist(false).start() {
+            match KernelTrace::new().named(name).set_trace_properties(props).enable(threads).enable(disk).start() {
                 Ok((trace, handle)) => {
                     collector.trace = Some(trace);
                     collector.worker = Some(thread::spawn(move || {

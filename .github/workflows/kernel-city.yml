@@ -23,16 +23,9 @@ jobs:
       - name: Install terminal test dependency
         run: python -m pip install pywinpty==2.0.15
       - name: Test application grouping and simulation
-        run: cargo test --all-targets
-      - name: Export resolved lockfile
-        if: always()
-        shell: python
-        run: |
-          import base64
-          from pathlib import Path
-          print('LOCKFILE_BASE64=' + base64.b64encode(Path('Cargo.lock').read_bytes()).decode())
+        run: cargo test --locked --all-targets
       - name: Build Windows release and controlled workload
-        run: cargo build --release --bin metropolis --example load_fixture
+        run: cargo build --locked --release --bin metropolis --example load_fixture
       - name: Verify live Windows processes and disk attribution
         run: python scripts/test_live_apps.py target/release/metropolis.exe target/release/examples/load_fixture.exe
       - name: Launch, animate, and quit in a Windows pseudoterminal
