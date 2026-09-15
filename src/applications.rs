@@ -115,6 +115,7 @@ impl ApplicationCollector {
         }
         if launcher(p) { return base_identity(p); }
         let mut cursor = p;
+        let mut identity = base_identity(p);
         let mut seen = HashSet::from([p.key.pid]);
         while let Some(parent) = cursor.parent.and_then(|pid| all.get(&pid)).copied() {
             if !seen.insert(parent.key.pid) || parent.key.started > cursor.key.started || launcher(parent) { break; }
@@ -126,10 +127,17 @@ impl ApplicationCollector {
                 == parent.exe.rsplit_once('/').map(|v| v.0);
             let helper = matches!(stem(p).as_str(), "node" | "conhost" | "crashpad_handler" |
                 "chrome_crashpad_handler" | "code_helper" | "rg" | "ptyhost");
-            if same_dir || helper { return id; }
+            if same_dir || helper {
+                identity = id;
+                // A fresh helper may itself have a parent. Walk all the way to
+                // the application root instead of caching a helper-only group.
+                if known(parent).is_some() || self.previous.get(&parent.key).is_some_and(|old| old.exe == parent.exe) {
+                    return identity;
+                }
+            }
             cursor = parent;
         }
-        base_identity(p)
+        identity
     }
 
     pub fn sample(&mut self, sys: &System, seconds: f64, disk: &DiskFrame) -> Vec<AppMetrics> {
@@ -199,6 +207,15 @@ mod tests {
         assert_eq!(apps.len(),3);
         for app in apps { assert_eq!(app.processes.len(),2); assert_eq!(app.ram_bytes,2048);
             assert_eq!(app.cpu_percent,20.0); assert_eq!(app.io_write_bps,0.0); assert_eq!(app.disk_write_bps,None); }
+    }
+    #[test]
+    fn fresh_nested_helpers_attach_to_the_application_root() {
+        let raw = vec![p(30,None,"C:/Code/Code.exe"), p(31,Some(30),"C:/Code/bin/node.exe"),
+            p(32,Some(31),"C:/Code/tools/rg.exe")];
+        let apps = ApplicationCollector::default().aggregate(&raw,4,1.0,&DiskFrame::default());
+        assert_eq!(apps.len(),1);
+        assert_eq!(apps[0].id,"app:vscode");
+        assert_eq!(apps[0].processes.len(),3);
     }
     #[test]
     fn steady_io_is_not_differenced_twice_and_pid_reuse_resets_baseline() {
