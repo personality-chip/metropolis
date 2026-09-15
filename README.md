@@ -148,3 +148,7 @@ Drop custom `.toml` files into the `themes/` directory next to your config file.
 ⭐ [Drop a star](https://github.com/5c0/metropolis/stargazers) if you're enjoying the view.
 
 </div>
+# Kernel City fork
+
+Windows application buildings are available with `metropolis --apps`.
+See [Kernel City: download, controls, metrics and validation](docs/KERNEL_CITY.md).

@@ -3,6 +3,7 @@ pub mod vehicles;
 pub mod people;
 pub mod buildings;
 pub mod utils;
+pub mod applications;
 
 use rand::prelude::*;
 use ratatui::{
@@ -114,6 +115,7 @@ pub struct MetropolisCity {
     pub ram_string: String,
     pub perf: PerfStats,
     pub buildings_cache: Vec<BuildingInfo>,
+    pub applications: Option<applications::AppDistrict>,
     cached_width: u16,
     cached_height: u16,
 }
@@ -174,6 +176,7 @@ impl MetropolisCity {
             ram_string: String::from("0"),
             perf: PerfStats::new(),
             buildings_cache: Vec::new(),
+            applications: None,
             cached_width: 0,
             cached_height: 0,
         }
@@ -202,11 +205,20 @@ impl MetropolisCity {
 
         if area.width < 32 || area.height < 12 { return; }
 
-        self.rebuild_buildings_if_needed(area);
+        if let Some(apps) = &mut self.applications {
+            apps.animate();
+            self.buildings_cache = apps.geometry(area);
+        } else {
+            self.rebuild_buildings_if_needed(area);
+        }
 
         let mut rng = thread_rng();
 
-        vehicles::update_vehicles(&mut self.vehicles, &mut self.chase_cooldown, self.frame_count, cpu, self.disk_usage, area, &self.theme, &self.simulation_config, &mut rng);
+        if let Some(apps) = &mut self.applications {
+            vehicles::update_app_vehicles(&mut self.vehicles, apps, &self.buildings_cache, area, &self.theme, &self.simulation_config, &mut rng);
+        } else {
+            vehicles::update_vehicles(&mut self.vehicles, &mut self.chase_cooldown, self.frame_count, cpu, self.disk_usage, area, &self.theme, &self.simulation_config, &mut rng);
+        }
         let mut people = std::mem::take(&mut self.people);
         people::update_people(&mut people, self.frame_count, area, &self.theme, &self.simulation_config, &self.buildings_cache, &mut rng);
         self.people = people;
@@ -316,6 +328,10 @@ impl MetropolisCity {
 
         for b in &self.buildings_cache {
             let i = b.index;
+            let app = self.applications.as_ref().and_then(|apps| apps.lots.get(i)).and_then(Option::as_ref);
+            let selected = app.is_some_and(|b| self.applications.as_ref().unwrap().selected.as_ref() == Some(&b.metrics.id));
+            let b_base_color = if app.is_some() { self.theme.building_base_colors[i % self.theme.building_base_colors.len()] } else { b_base_color };
+            let alive = app.map(|b| b.alive).unwrap_or(true);
             let bw = b.width;
             let bh = b.height;
             let start_y = ground_y.saturating_sub(bh);
@@ -330,7 +346,7 @@ impl MetropolisCity {
                         let mut fg = b_base_color;
                         let mut bg = b_base_color;
                         let mut is_logo_pixel = false;
-                        if i == 1 && y_rel < 20 && x_rel < 32 {
+                        if app.is_none() && i == 1 && y_rel < 20 && x_rel < 32 {
                             if let Some(pixel) = &logo_asset.grid[y_rel as usize][x_rel as usize] {
                                 let logo_bg = if pixel.bg == Color::Reset { b_base_color } else { pixel.bg };
                                 safe_set_char_with_bg(buf, dx, dy, pixel.ch, self.theme.logo_override.unwrap_or(pixel.color), logo_bg);
@@ -349,13 +365,13 @@ impl MetropolisCity {
                         if !is_logo_pixel {
                             if x_rel == 0 || x_rel == bw.saturating_sub(1) { 
                                 symbol = "┃"; 
-                                fg = Color::Rgb(30, 30, 50); 
+                                fg = if selected { self.theme.neon_main } else { Color::Rgb(30, 30, 50) };
                             }
-                            let has_sign = i % 2 == 1 && bh > 12;
+                            let has_sign = app.is_none() && i % 2 == 1 && bh > 12;
                             let is_win_row = y_rel > 2 && y_rel < bh.saturating_sub(4) && y_rel % 3 == 0;
                             let x_clearance = if has_sign { bw.saturating_sub(2) } else { bw.saturating_sub(1) };
                             let mut near_logo = false;
-                            if i == 1 {
+                            if app.is_none() && i == 1 {
                                 for dy_off in -1..=1 {
                                     for dx_off in -1..=1 {
                                         let check_y = (y_rel as i32 + dy_off) as usize;
@@ -375,7 +391,11 @@ impl MetropolisCity {
                                     symbol = "▄";
                                     let seed = (dx as u64).wrapping_mul(100).wrapping_add(dy as u64).wrapping_add(self.window_seed);
                                     let mut wr = StdRng::seed_from_u64(seed);
-                                    fg = if wr.gen_bool(0.25) { self.theme.window_lit } else { self.theme.window_unlit };
+                                    let fraction = app.map(|b| b.light_fraction()).unwrap_or(0.25);
+                                    let lit = wr.gen_bool(fraction);
+                                    let hot = app.is_some_and(|b| b.cpu > 70.0);
+                                    let pulse = app.is_some_and(|b| b.cpu > 5.0) && (self.frame_count / 3 + seed) % 11 == 0;
+                                    fg = if lit { if hot { self.theme.police_red } else if pulse { Color::White } else { self.theme.window_lit } } else { self.theme.window_unlit };
                                     bg = self.theme.window_dark;
                                 }
                             }
@@ -384,7 +404,7 @@ impl MetropolisCity {
                                 if x_rel >= door_x.saturating_sub(1) && x_rel <= door_x + 1 {
                                     if y_rel == bh.saturating_sub(3) { 
                                         symbol = "━"; 
-                                        fg = if i % 2 == 0 { self.theme.neon_sub1 } else { self.theme.neon_main }; 
+                                        fg = if !alive { self.theme.window_unlit } else if i % 2 == 0 { self.theme.neon_sub1 } else { self.theme.neon_main };
                                     } else { 
                                         symbol = "░"; 
                                         fg = self.theme.window_unlit; 
@@ -392,7 +412,7 @@ impl MetropolisCity {
                                 }
                                 if x_rel == door_x + 2 && y_rel == bh.saturating_sub(2) {
                                     symbol = "·"; 
-                                    fg = if self.frame_count % 20 < 10 { Color::Red } else { Color::Green };
+                                    fg = if !alive { self.theme.window_unlit } else if self.frame_count % 20 < 10 { Color::Red } else { Color::Green };
                                 }
                             }
                         }
@@ -401,7 +421,7 @@ impl MetropolisCity {
                 }
             }
 
-            if i % 2 == 1 && bh > 12 {
+            if app.is_none() && i % 2 == 1 && bh > 12 {
                 let sign_text: &str;
                 let sign_color;
                 if i == 1 {
@@ -428,7 +448,17 @@ impl MetropolisCity {
                 draw_neon_sign(buf, start_x + bw.saturating_sub(1), sign_y, sign_text, sign_color, self.frame_count);
             }
 
-            if i != 1 && i != 3 {
+            if let Some(app) = app {
+                let label: String = app.metrics.name.chars().take(bw as usize).collect();
+                let color = if !alive { self.theme.window_unlit } else if app.cpu > 70.0 { self.theme.police_red } else if selected { Color::White } else { self.theme.neon_main };
+                safe_set_string(buf, start_x, start_y.saturating_sub(1), &label, color);
+                if alive && app.cpu > 25.0 && start_y > 3 {
+                    let smoke = ["·", "░", "▒"][(self.frame_count as usize / 3 + i) % 3];
+                    safe_set_string(buf, start_x + bw / 2, start_y - 3, smoke, color);
+                }
+            }
+
+            if app.is_none() && i != 1 && i != 3 {
                 let ant_x = start_x.saturating_add(2);
                 if ant_x < buf.area.width {
                     let ant_y = area.y.saturating_add(start_y.saturating_sub(1));
@@ -496,6 +526,7 @@ impl MetropolisCity {
     }
 
     fn render_megaboard(&self, area: Rect, buf: &mut Buffer) {
+        if self.applications.is_some() { return; }
         let ground_y = area.height.saturating_sub(3);
         // Find building at index 3 from the cache
         if let Some(b3) = self.buildings_cache.iter().find(|b| b.index == 3) {
@@ -541,7 +572,8 @@ impl MetropolisCity {
             if v.x < -15.0 { continue; }
             let vx_f = area.x as f32 + v.x; let vy = area.y as u16 + v.y as u16;
             if vy >= area.y + area.height { continue; }
-            let (body, tail_color) = match v.v_type { 
+            let (body, tail_color) = match v.v_type {
+                VehicleType::Truck => (if v.speed > 0.0 { vec!['▪', '▣', '▶'] } else { vec!['◀', '▣', '▪'] }, None),
                 VehicleType::Spinner => (vec!['◢', '■', '◣'], Some(self.theme.police_red)),
                 VehicleType::Shuttle => {
                     let mut b = Vec::new(); b.push('▓');
@@ -767,5 +799,6 @@ impl Widget for &MetropolisCity {
         self.render_vehicles(area, buf);
         self.render_weather_fg(area, buf);
         self.render_diagnostics(area, buf);
+        if let Some(apps) = &self.applications { apps.render(area, buf, &self.theme, &self.buildings_cache); }
     }
 }

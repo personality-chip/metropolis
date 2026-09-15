@@ -10,7 +10,7 @@ from winpty import PtyProcess
 exe = str(Path(sys.argv[1]).resolve())
 out = Path("test-output")
 out.mkdir(exist_ok=True)
-proc = PtyProcess.spawn([exe], dimensions=(40, 160))
+proc = PtyProcess.spawn([exe, *sys.argv[2:]], dimensions=(40, 160))
 chunks = []
 errors = []
 
@@ -35,9 +35,16 @@ try:
     time.sleep(3)
     assert proc.isalive(), "TUI exited before the first metric samples"
     # Exercise the existing simulation and input loop, then request normal exit.
-    for key in ("r", "s", "d"):
+    for key in ("r", "s", "d", "d", "\t", "\x1b[C", "\x1b[6~", "\x1b[5~", "\x1b"):
         proc.write(key)
         time.sleep(0.3)
+    if '--apps' in sys.argv:
+        assert 'KERNEL CITY' in ''.join(chunks), 'Application footer not rendered'
+        assert 'Application' in ''.join(chunks), 'Selection panel not rendered'
+    for rows, columns in [(10, 30), (20, 70), (40, 160)]:
+        proc.setwinsize(rows, columns)
+        time.sleep(0.3)
+        assert proc.isalive(), 'Resize crashed the city'
     proc.write("q")
     deadline = time.monotonic() + 10
     while proc.isalive() and time.monotonic() < deadline:
@@ -45,15 +52,15 @@ try:
     assert not proc.isalive(), "TUI did not respond to q"
     reader.join(timeout=2)
     capture = "".join(chunks)
-    (out / "terminal.ansi").write_text(capture, encoding="utf-8")
+    (out / ("terminal-apps.ansi" if "--apps" in sys.argv else "terminal-classic.ansi")).write_text(capture, encoding="utf-8")
     result = {
         "exit_status": proc.exitstatus,
         "captured_characters": len(capture),
         "reader_errors": errors,
         "terminal": "160 columns x 40 rows",
-        "inputs": ["r", "s", "d", "q"],
+        "inputs": ["weather", "debug", "select", "page", "resize", "q"],
     }
-    (out / "terminal-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    (out / ("terminal-apps-result.json" if "--apps" in sys.argv else "terminal-classic-result.json")).write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
     assert proc.exitstatus == 0, "TUI returned an error"
     assert len(capture) > 1000 and "\x1b[" in capture, "No rendered city received"
